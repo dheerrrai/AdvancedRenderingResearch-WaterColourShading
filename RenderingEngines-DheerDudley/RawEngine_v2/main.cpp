@@ -786,7 +786,7 @@ int main() {
         // ---------------- CSV logging ----------------
         static bool wasLogging = false;
         if (loggingEnabled && !wasLogging) {
-            csvLog.open("../CSVLogging/PerformanceLogs.csv");
+            csvLog.open("../CSVLogging/PaperPerformance.csv");
 
             if (!csvLog.is_open())
                 std::cout << "Failed to open CSV\n";

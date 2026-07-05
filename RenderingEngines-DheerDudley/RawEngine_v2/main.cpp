@@ -8,6 +8,8 @@
 #include <array>
 #include <chrono>
 #include <map>
+
+#include "imgui_impl_opengl3_loader.h"
 #include "core/mesh.h"
 #include "core/assimpLoader.h"
 #include "core/BaseWrapperTemplate.h"
@@ -335,10 +337,7 @@ int main() {
     ShaderPrograms.add("EdgeDarken", EdgeDarkenShader);
     ShaderPrograms.add("Composite", CompositeShader);
 
-    // ---------------- Scene render target ----------------
-    // Holds the pristine, untouched model render each frame. Every
-    // post-process pass that needs the "original" image (rather than
-    // another pass's output) reads from here.
+
     glGenFramebuffers(1, &sceneFrameBuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, sceneFrameBuffer);
 
@@ -358,14 +357,12 @@ int main() {
         printf("ERROR::FRAMEBUFFER:: sceneFrameBuffer incomplete!\n");
 
     // ---------------- Post-process ping-pong targets ----------------
-    // Used by the linear part of the chain (WhiteBase, Granulation, PaperTexture,
-    // and the merged Bleed/EdgeDarken result).
+
     createColorTarget(frameBuffer01, textureColorbuffer);
     createColorTarget(frameBuffer02, textureColorbuffer2);
 
     // ---------------- Bleed / EdgeDarken branch targets ----------------
-    // Both passes read the pristine scene independently, so each needs its
-    // own output target; a Composite pass merges the two afterward.
+
     createColorTarget(bleedOutFrameBuffer, bleedOutTex);
     createColorTarget(edgeOutFrameBuffer, edgeOutTex);
 
@@ -418,6 +415,7 @@ int main() {
     unsigned int watercolourQueries[5];
     glGenQueries(5, watercolourQueries);
     double passTimings[5] = {0, 0, 0, 0, 0};
+    //WhiteBase -> EdgeDarken -> BleedColour -> Granulation -> PaperTexture
 
     double currentTime = glfwGetTime();
     double finishFrameTime = 0.0;
@@ -434,11 +432,7 @@ int main() {
     float constAtt = 0, linAtt = 1, quadAtt = 1;
 
     // ---------------- Watercolour pipeline state ----------------
-    // Timing/history/display index mapping is fixed as:
-    // 0 = WhiteBase, 1 = EdgeDarken, 2 = Bleed, 3 = Granulation, 4 = PaperTexture
-    // Bleed and EdgeDarken both read the scene render independently (rather
-    // than chaining off each other) and are merged by a Composite pass, so
-    // the outline stays crisp regardless of how strong the bleed is.
+
     bool whiteEnabled = false;
     float whiteThreshold = 1.5f;
 
@@ -448,14 +442,17 @@ int main() {
     bool bleedColoursEnabled = false;
     float bleedStrength = 0.003f;
 
-    // Used by Composite to decide which pixels come from the EdgeDarken
-    // result versus the Bleed result.
+
     float edgeCompositeThreshold = 0.3f;
 
     bool granEnabled = false;
     float granulationStrength = 0.2f;
 
     bool paperEnabled = false;
+    int LogFrameCount = 0;
+
+    std::ofstream csvLogs[5];
+    bool wasLogging = false;
 
     std::vector<std::vector<core::Model*>> SceneList;
     std::vector<core::Model*> scene;
@@ -624,12 +621,10 @@ int main() {
         glDisable(GL_DEPTH_TEST);
         glBindVertexArray(quadVAO);
 
-        // currentInput always points at whichever texture holds the most
-        // up-to-date processed image; it starts as the pristine scene render.
         unsigned int currentInput = sceneColorTex;
 
         // ---------------- WhiteBase ----------------
-        // Runs first since it's a simple per-pixel remap of the raw scene.
+
         if (whiteEnabled) {
             glBeginQuery(GL_TIME_ELAPSED, watercolourQueries[0]);
 
@@ -656,9 +651,7 @@ int main() {
         }
 
         // ---------------- Bleed and EdgeDarken branch ----------------
-        // Both passes read the same input independently, so the outline
-        // detection always runs on crisp, unblurred geometry regardless of
-        // how strong the bleed effect is.
+
         unsigned int branchInput = currentInput;
 
         if (bleedColoursEnabled) {
@@ -709,8 +702,7 @@ int main() {
             passTimings[1] = 0.0;
         }
 
-        // Merge the two branch outputs. If only one of the two ran, use its
-        // result directly rather than compositing against an untouched image.
+
         if (bleedColoursEnabled && edgeEnabled) {
             glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer02);
             glViewport(0, 0, g_width, g_height);
@@ -734,10 +726,10 @@ int main() {
         else if (edgeEnabled) {
             currentInput = edgeOutTex;
         }
-        // else: neither ran, currentInput is unchanged from before the branch
+
 
         // ---------------- Granulation and PaperTexture ----------------
-        // Resume as a normal chain, each reading the previous result.
+
         bool laterToggles[2] = { granEnabled, paperEnabled };
         const char* laterPassNames[2] = { "Granulation", "PaperTexture" };
         unsigned int laterFBOs[2] = { frameBuffer01, frameBuffer02 };
@@ -784,30 +776,59 @@ int main() {
         checkGLError("post process");
 
         // ---------------- CSV logging ----------------
-        static bool wasLogging = false;
-        if (loggingEnabled && !wasLogging) {
-            csvLog.open("../CSVLogging/PaperPerformance.csv");
 
-            if (!csvLog.is_open())
-                std::cout << "Failed to open CSV\n";
-            else
-                std::cout << "CSV opened successfully\n";
+        const char* CSVfilePaths[5] = {
+            "../CSVLogging/WhiteBasePerformance.csv",
+            "../CSVLogging/EdgePerformance.csv",
+            "../CSVLogging/BleedPerformance.csv",
+            "../CSVLogging/GranulationPerformance.csv",
+            "../CSVLogging/PaperPerformance.csv",
 
-            csvLog << "Time,WhiteBase,EdgeDarken,Bleed,Granulation,PaperTexture\n";
-            logStartTime = glfwGetTime();
+        };
+        const bool* ShaderBoolRef[5] = {
+            &whiteEnabled,
+            &edgeEnabled,
+            &bleedColoursEnabled,
+            &granEnabled,
+            &paperEnabled,
+
+        };
+
+        if (loggingEnabled && !wasLogging)
+        {
+            LogFrameCount=0;
+            for (int i = 0; i < 5; i++)
+            {
+                csvLogs[i].open(CSVfilePaths[i]);
+
+                if (!csvLogs[i].is_open())
+                    std::cout << "Failed opening " << CSVfilePaths[i] << "\n";
+                else
+                    csvLogs[i] << "Frame,ActiveState,Delta Time\n";
+            }
         }
-        if (!loggingEnabled && wasLogging) {
-            csvLog.close();
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                if (csvLogs[i].is_open())
+                {
+                    csvLogs[i]
+                        << LogFrameCount << ","
+                        << *ShaderBoolRef[i] << ","
+                        << passTimings[i]
+                        << '\n';
+                }
+            }
+        }
+        if (!loggingEnabled && wasLogging)
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                if (csvLogs[i].is_open())
+                    csvLogs[i].close();
+            }
         }
         wasLogging = loggingEnabled;
-
-        if (loggingEnabled && csvLog.is_open()) {
-            csvLog << (glfwGetTime() - logStartTime) << ","
-                   << passTimings[0] << "," << passTimings[1] << ","
-                   << passTimings[2] << "," << passTimings[3] << ","
-                   << passTimings[4] << "\n";
-        }
-
         // ---------------- Final composite to screen ----------------
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, g_width, g_height);
@@ -828,6 +849,7 @@ int main() {
         finishFrameTime = glfwGetTime();
         deltaTimeF = static_cast<float>(finishFrameTime - currentTime);
         currentTime = finishFrameTime;
+        LogFrameCount++;
         FrameRate();
     }
 

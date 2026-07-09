@@ -1,5 +1,7 @@
 # Research and Analysis : WaterColour Shader
 # Dheer Rai Dudley
+
+# For Code References, Go to the Wiki Page : https://github.com/dheerrrai/AdvancedRenderingResearch-WaterColourShading/wiki/Research-And-Analysis-%E2%80%90-Water-Colour-Rendering-in-OpenGL
 ## Research
   The implemented watercolour renderer is built as a series of post-processing fragment shaders. Unlike traditional geometry processing, post-processing shaders execute once for every pixel on the rendered image rather than once per object or triangle. Because of this, the computational complexity of each shader is primarily determined by the number of screen pixels and the amount of work performed for each pixel.  
   For a display containing P pixels, a shader that performs a fixed number of operations for every pixel has a complexity of T(P)=O(P), where P represents the total number of rendered pixels.  
@@ -119,4 +121,6 @@ Heckbert, P. S. (1989). Fundamentals of texture mapping and image warping (Maste
 Heckbert, P. S. (1986). Filtering by repeated integration. Proceedings of the 13th Annual Conference on Computer Graphics and Interactive Techniques (SIGGRAPH '86), 315–321. https://doi.org/10.1145/15886.15921  
 Turkowski, K. (2007). Incremental Computation of the Gaussian. In H. Nguyen (Ed.), GPU Gems 3. NVIDIA. https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-40-incremental-computation-gaussian  
 Yang, Y., Barnes, C., & Finkelstein, A. (2021). Learning from Shader Program Traces. arXiv. https://doi.org/10.48550/arXiv.2102.04533  
-Haeberli, P., & Akeley, K. (1990). The accumulation buffer: Hardware support for high-quality rendering. SIGGRAPH. https://dl.acm.org/doi/pdf/10.1145/97879.97981  
+Haeberli, P., & Akeley, K. (1990). The accumulation buffer: Hardware support for high-quality rendering. SIGGRAPH. https://dl.acm.org/doi/pdf/10.1145/97879.97981 
+
+
